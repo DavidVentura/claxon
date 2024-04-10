@@ -399,7 +399,7 @@ fn verify_decode_mid_side() {
 }
 
 /// A block of raw audio samples.
-pub struct Block {
+pub struct Block<'a> {
     /// The sample number of the first sample in the this block.
     first_sample_number: u64,
     /// The number of samples in the block.
@@ -407,11 +407,11 @@ pub struct Block {
     /// The number of channels in the block.
     channels: u32,
     /// The decoded samples, the channels stored consecutively.
-    buffer: Vec<i32>,
+    buffer: &'a mut Vec<i32>,
 }
 
-impl Block {
-    fn new(time: u64, bs: u32, buffer: Vec<i32>) -> Block {
+impl<'a> Block<'a> {
+    fn new(time: u64, bs: u32, buffer: &'a mut Vec<i32>) -> Block<'a> {
         Block {
             first_sample_number: time,
             block_size: bs,
@@ -421,12 +421,12 @@ impl Block {
     }
 
     /// Returns a block with 0 channels and 0 samples.
-    pub fn empty() -> Block {
+    pub fn empty(v: &'a mut Vec<i32>) -> Block<'a> {
         Block {
             first_sample_number: 0,
             block_size: 0,
             channels: 0,
-            buffer: Vec::with_capacity(0),
+            buffer: v,
         }
     }
 
@@ -500,8 +500,8 @@ impl Block {
     ///
     /// This allows the buffer to be reused to decode the next frame. The
     /// capacity of the buffer may be bigger than `len()` times `channels()`.
-    pub fn into_buffer(self) -> Vec<i32> {
-        return self.buffer;
+    pub fn into_buffer(&'a mut self) -> &'a mut Vec<i32> {
+        return &mut self.buffer;
     }
 
     /// Returns an iterator that produces left and right channel samples.
@@ -513,7 +513,7 @@ impl Block {
     ///
     /// Panics if the number of channels in the block is not 2.
     #[inline]
-    pub fn stereo_samples<'a>(&'a self) -> StereoSamples<'a> {
+    pub fn stereo_samples(&'a self) -> StereoSamples<'a> {
         if self.channels != 2 {
             panic!("stereo_samples() must only be called for blocks with two channels.");
         }
@@ -606,14 +606,14 @@ pub struct FrameReader<R: ReadBytes> {
 
 /// Either a `Block` or an `Error`.
 // TODO: The option should not be part of FrameResult.
-pub type FrameResult = Result<Option<Block>>;
+pub type FrameResult<'a> = Result<Option<Block<'a>>>;
 
 /// A function to expand the length of a buffer, or replace the buffer altogether,
 /// so it can hold at least `new_len` elements. The contents of the buffer can
 /// be anything, it is assumed they will be overwritten anyway.
 ///
 /// To use this function safely, the caller must overwrite all `new_len` bytes.
-fn ensure_buffer_len(mut buffer: Vec<i32>, new_len: usize) -> Vec<i32> {
+fn ensure_buffer_len(buffer: &mut Vec<i32>, new_len: usize) {
     if buffer.len() < new_len {
         // Previous data will be overwritten, so instead of resizing the
         // vector if it is too small, we might as well allocate a new one.
@@ -625,15 +625,10 @@ fn ensure_buffer_len(mut buffer: Vec<i32>, new_len: usize) -> Vec<i32> {
         // increase on real-world files when the buffer is recycled). We still
         // don't zero out previous contents of the buffer as it was passed in,
         // zeroing only happens on resize or for new allocations.
-        if buffer.capacity() < new_len {
-            buffer = vec![0; new_len];
-        } else {
             buffer.resize(new_len, 0);
-        }
     } else {
         buffer.truncate(new_len);
     }
-    buffer
 }
 
 #[test]
@@ -664,7 +659,7 @@ impl<R: ReadBytes> FrameReader<R> {
     /// allocated automatically.
     ///
     /// TODO: I should really be consistent with 'read' and 'decode'.
-    pub fn read_next_or_eof(&mut self, mut buffer: Vec<i32>) -> FrameResult {
+    pub fn read_next_or_eof<'a>(&'a mut self, buffer: &'a mut Vec<i32>) -> FrameResult {
         // The frame includes a CRC-16 at the end. It can be computed
         // automatically while reading, by wrapping the input reader in a reader
         // that computes the CRC. If the stream ended before the the frame
@@ -682,7 +677,7 @@ impl<R: ReadBytes> FrameReader<R> {
 
         // Ensure the buffer is the right size to hold all samples. For
         // correctness, we must be careful to overwrite each byte in the buffer.
-        buffer = ensure_buffer_len(buffer, total_samples);
+        ensure_buffer_len(buffer, total_samples);
 
         let bps = match header.bits_per_sample {
             Some(x) => x,

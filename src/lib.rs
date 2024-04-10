@@ -166,9 +166,9 @@ impl FlacReaderOptions {
 }
 
 /// An iterator that yields samples read from a `FlacReader`.
-pub struct FlacSamples<R: ReadBytes> {
+pub struct FlacSamples<'a, R: ReadBytes> {
     frame_reader: FrameReader<R>,
-    block: Block,
+    block: Block<'a>,
     sample: u32,
     channel: u32,
 
@@ -178,9 +178,9 @@ pub struct FlacSamples<R: ReadBytes> {
 }
 
 /// An iterator that yields samples read from a `FlacReader`.
-pub struct FlacIntoSamples<R: ReadBytes> {
+pub struct FlacIntoSamples<'a, R: ReadBytes> {
     // This works because `ReadBytes` is implemented for both `&mut R` and `R`.
-    inner: FlacSamples<R>,
+    inner: FlacSamples<'a, R>,
 }
 
 fn read_stream_header<R: ReadBytes>(input: &mut R) -> Result<()> {
@@ -373,6 +373,7 @@ impl<R: io::Read> FlacReader<R> {
         }
     }
 
+    /*
     /// Returns an iterator over all samples.
     ///
     /// The channel data is is interleaved. The iterator is streaming. That is,
@@ -414,7 +415,7 @@ impl<R: io::Read> FlacReader<R> {
     /// Same as `samples`, but takes ownership of the `FlacReader`.
     ///
     /// See `samples()` for more info.
-    pub fn into_samples(self) -> FlacIntoSamples<BufferedReader<R>> {
+    pub fn into_samples(self) -> FlacIntoSamples<'static, BufferedReader<R>> {
         match self.input {
             FlacReaderState::Full(inp) => {
                 FlacIntoSamples {
@@ -433,6 +434,7 @@ impl<R: io::Read> FlacReader<R> {
             }
         }
     }
+    */
 
     /// Destroys the FLAC reader and returns the underlying reader.
     ///
@@ -470,7 +472,8 @@ impl FlacReader<fs::File> {
     }
 }
 
-impl<R: ReadBytes> Iterator for FlacSamples<R> {
+/*
+impl<'a, R: ReadBytes> Iterator for FlacSamples<'a, R> {
     type Item = Result<i32>;
 
     fn next(&mut self) -> Option<Result<i32>> {
@@ -494,9 +497,9 @@ impl<R: ReadBytes> Iterator for FlacSamples<R> {
 
                 // Replace the current block with an empty one so that we may
                 // reuse the current buffer to decode again.
-                let current_block = mem::replace(&mut self.block, Block::empty());
+                let current_block = mem::replace(&mut self.block, Block::empty(&mut v));
 
-                match self.frame_reader.read_next_or_eof(current_block.into_buffer()) {
+                match self.frame_reader.read_next_or_eof(&mut current_block.into_buffer()) {
                     Ok(Some(next_block)) => {
                         self.block = next_block;
                     }
@@ -519,7 +522,7 @@ impl<R: ReadBytes> Iterator for FlacSamples<R> {
     }
 }
 
-impl<R: ReadBytes> Iterator for FlacIntoSamples<R> {
+impl<'a, R: ReadBytes> Iterator for FlacIntoSamples<'a, R> {
     type Item = Result<i32>;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -530,3 +533,4 @@ impl<R: ReadBytes> Iterator for FlacIntoSamples<R> {
         self.inner.size_hint()
     }
 }
+*/
